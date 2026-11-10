@@ -1,0 +1,170 @@
+---
+title: "PENGUINS"
+author: "Christian Simoneau"
+date: "2026-10-25"
+output: html_document
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(palmerpenguins)
+library(ggplot2)
+library(dplyr)
+library(car)
+library(tidyr)
+
+# Load the dataset and remove rows with missing values
+df_full <- penguins %>% drop_na()
+
+
+
+## peek at total number of adorable penguins
+table(df_full$species)
+```
+
+
+## Slide Demo
+
+## 1) Calculatee Mean
+```{r}
+## Randomly sample  68 penguins from each species (there are only 68 chinstraps)
+set.seed(123) # random seed
+df_sampled <- df_full %>%
+  group_by(species) %>%
+  sample_n(68) %>%
+  ungroup()
+
+## Preform Levene test
+leveneTest(flipper_length_mm ~ species, data = df_sampled)
+
+## Determine mean flipper length for each species
+df_sampled %>%
+  group_by(species) %>%
+  summarise(mean_flipper_length = mean(flipper_length_mm))
+
+
+## Determine mean flipper length for all sampled penguins
+df_sampled %>%
+  summarise(mean_flipper_length = mean(flipper_length_mm))
+            
+```
+
+## 1.1) Q-Q Plot
+```{r}
+# Q-Q plots for eachspecies
+ggplot(penguins, aes(sample = flipper_length_mm)) +
+  geom_qq() +
+  geom_qq_line(color = "red", linewidth = 0.8) +
+  facet_wrap(~ species) +
+  labs(
+    title = "Normal Q-Q Plots of Flipper Length by Species",
+    x = "Theoretical Quantiles",
+    y = "Sample Quantiles (Flipper Length, mm)"
+  ) +
+  theme_minimal()
+```
+
+
+## 2) Calculate  Sum of Squares Between Groups
+```{r}
+grand_mean <- mean(df_sampled$flipper_length_mm)
+ss_between <- df_sampled %>%
+  group_by(species) %>%
+  summarise(n = n(),
+            mean_flipper_length = mean(flipper_length_mm)) %>%
+  mutate(ss = n * (mean_flipper_length - grand_mean)^2) %>%
+  summarise(ss_between = sum(ss))
+ss_between
+
+```
+
+
+## 3) Calculate Sum of Squares Within Groups
+```{r}
+
+ss_within <- df_sampled %>%
+  group_by(species) %>%
+  summarise(n = n(),
+            mean_flipper_length = mean(flipper_length_mm)) %>%
+  left_join(df_sampled, by = "species") %>%
+  mutate(ss = (flipper_length_mm - mean_flipper_length)^2) %>%
+  group_by(species) %>%
+  summarise(ss_within = sum(ss))
+ss_within
+
+## Total Sum of Squares Within Groups
+ss_within_total <- sum(ss_within$ss_within)
+ss_within_total
+```
+
+
+## 4) Variance  (Mean Squares)
+```{r}
+ms_between <- ss_between$ss_between / (length(unique(df_sampled$species)) - 1)
+ms_within <- ss_within_total / (nrow(df_sampled) - length(unique(df_sampled$species)))
+ms_between
+ms_within
+```
+
+## 5) Calculate F-statistic
+```{r}
+f_statistic <- ms_between / ms_within
+f_statistic
+```
+
+## 6) Calculate F-statistic for ANOVA
+```{r}
+anova_result <- aov(flipper_length_mm ~ species, data = df_sampled)
+tab <- summary(anova_result)[[1]]
+
+df1   <- tab[["Df"]][1]          # 2
+df2   <- tab[["Df"]][2]          # 201
+f_val <- tab[["F value"]][1]     # 300.933
+p_val <- tab[["Pr(>F)"]][1]      # P-value from other variables and ANOVA table
+
+alpha <- 0.05 
+
+# Formatted string for p-value presentation
+p_str <- ifelse(p_val < 2.2e-16, "< 2.2e-16", sprintf("= %.3g", p_val))
+
+# Print 
+sprintf("F(%d, %d) = %.1f, p %s", df1, df2, f_val, p_str)
+
+# hypothesis check
+if (p_val < alpha) {
+  cat("There is a statistically significant difference in mean flipper length across species.\n")
+} else {
+  cat("There is no statistically significant difference in mean flipper length across species.\n")
+}
+```
+## Generate Visual
+```{r}
+ggplot(df_sampled, aes(x = species, y = flipper_length_mm, fill = species)) +
+  geom_boxplot() +
+  labs(title = "ANOVA Visual: Flipper Length by Species",
+       x = "Species",
+       y = "Flipper Length (mm)") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2") 
+```
+## 7) Post-hoc Analysis
+```{r}
+TukeyHSD(aov(flipper_length_mm ~ species, data = df_sampled))
+```
+
+
+## Class Demo: In Built ANOVA Function
+```{r}
+anova_result <- aov(flipper_length_mm ~ species, data = df_sampled) ## Variables flipper and species
+summary(anova_result) 
+```
+
+## Generate Visual 
+```{r}
+ggplot(df_sampled, aes(x = species, y = flipper_length_mm, fill = species)) +
+  geom_boxplot() +
+  labs(title = "ANOVA Visual: Flipper Length by Species",
+       x = "Species",
+       y = "Flipper Length (mm)") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2") 
+```
