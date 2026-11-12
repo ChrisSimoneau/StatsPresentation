@@ -16,7 +16,6 @@ library(tidyr)
 df_full <- penguins %>% drop_na()
 
 
-
 ## peek at total number of adorable penguins
 table(df_full$species)
 ```
@@ -24,7 +23,7 @@ table(df_full$species)
 
 ## Slide Demo
 
-## 1) Calculatee Mean
+## 1) Calculate Mean
 ```{r}
 ## Randomly sample  68 penguins from each species (there are only 68 chinstraps)
 set.seed(123) # random seed
@@ -32,6 +31,18 @@ df_sampled <- df_full %>%
   group_by(species) %>%
   sample_n(68) %>%
   ungroup()
+
+# Q-Q plots for each species
+ggplot(penguins, aes(sample = flipper_length_mm)) +
+  geom_qq() +
+  geom_qq_line(color = "red", linewidth = 0.8) +
+  facet_wrap(~ species) +
+  labs(
+    title = "Normal Q-Q Plots of Flipper Length by Species",
+    x = "Theoretical Quantiles",
+    y = "Sample Quantiles (Flipper Length, mm)"
+  ) +
+  theme_minimal()
 
 ## Preform Levene test
 leveneTest(flipper_length_mm ~ species, data = df_sampled)
@@ -48,31 +59,28 @@ df_sampled %>%
             
 ```
 
-## 1.1) Q-Q Plot
-```{r}
-# Q-Q plots for eachspecies
-ggplot(penguins, aes(sample = flipper_length_mm)) +
-  geom_qq() +
-  geom_qq_line(color = "red", linewidth = 0.8) +
-  facet_wrap(~ species) +
-  labs(
-    title = "Normal Q-Q Plots of Flipper Length by Species",
-    x = "Theoretical Quantiles",
-    y = "Sample Quantiles (Flipper Length, mm)"
-  ) +
-  theme_minimal()
-```
 
 
 ## 2) Calculate  Sum of Squares Between Groups
 ```{r}
+# Calculate the grand mean penguins
 grand_mean <- mean(df_sampled$flipper_length_mm)
+
+# Calculate the between-group sum of squares
 ss_between <- df_sampled %>%
-  group_by(species) %>%
-  summarise(n = n(),
-            mean_flipper_length = mean(flipper_length_mm)) %>%
-  mutate(ss = n * (mean_flipper_length - grand_mean)^2) %>%
-  summarise(ss_between = sum(ss))
+  group_by(species) %>% 
+  summarise(
+    n = n(), 
+    mean_flipper_length = mean(flipper_length_mm)
+  ) %>%  # Calculate sample size and mean flipper length for each species
+  mutate(
+    ss = n * (mean_flipper_length - grand_mean)^2
+  ) %>%  # Calculate each species' contribution to SSB
+  summarise(
+    ss_between = sum(ss)
+  )      # Sum contributions across all species
+
+# Display the between-group sum of squares
 ss_between
 
 ```
@@ -81,26 +89,38 @@ ss_between
 ## 3) Calculate Sum of Squares Within Groups
 ```{r}
 
+# Calculate the within-group sum of squares
 ss_within <- df_sampled %>%
-  group_by(species) %>%
-  summarise(n = n(),
-            mean_flipper_length = mean(flipper_length_mm)) %>%
-  left_join(df_sampled, by = "species") %>%
-  mutate(ss = (flipper_length_mm - mean_flipper_length)^2) %>%
-  group_by(species) %>%
-  summarise(ss_within = sum(ss))
+  group_by(species) %>% 
+  summarise(
+    n = n(),
+    mean_flipper_length = mean(flipper_length_mm)
+  ) %>%  # Calculate sample size and mean flipper length for each species
+  left_join(df_sampled, by = "species") %>%  # Add individual penguin observations to their species means
+  mutate(
+    ss = (flipper_length_mm - mean_flipper_length)^2
+  ) %>%  # Calculate squared deviations from each species' mean
+  group_by(species) %>% 
+  summarise(
+    ss_within = sum(ss)
+  )      # Sum squared deviations within each species
+
+# Display the within-group sum of squares for each species
 ss_within
 
-## Total Sum of Squares Within Groups
+
+## Calculate the total within group sum of squares
 ss_within_total <- sum(ss_within$ss_within)
+
+# Display the total within group sum of squares
 ss_within_total
 ```
 
 
 ## 4) Variance  (Mean Squares)
 ```{r}
-ms_between <- ss_between$ss_between / (length(unique(df_sampled$species)) - 1)
-ms_within <- ss_within_total / (nrow(df_sampled) - length(unique(df_sampled$species)))
+ms_between <- ss_between$ss_between / (length(unique(df_sampled$species)) - 1) ## 27,708.62/2
+ms_within <- ss_within_total / (nrow(df_sampled) - length(unique(df_sampled$species)))## 9,253.631/201
 ms_between
 ms_within
 ```
@@ -146,6 +166,9 @@ ggplot(df_sampled, aes(x = species, y = flipper_length_mm, fill = species)) +
   theme_minimal() +
   scale_fill_brewer(palette = "Set2") 
 ```
+
+
+
 ## 7) Post-hoc Analysis
 ```{r}
 TukeyHSD(aov(flipper_length_mm ~ species, data = df_sampled))
